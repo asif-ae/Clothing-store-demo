@@ -1,104 +1,188 @@
-import Ionicons from '@expo/vector-icons/Ionicons';
-import { StyleSheet, Image, Platform, ScrollView, View, Text, Pressable, TouchableOpacity } from 'react-native';
+import ProductItem from "@/components/explore/ProductItem";
+import { NavigationProp, useNavigation } from "@react-navigation/native";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  ActivityIndicator,
+  FlatList,
+  Pressable,
+  Text,
+  TextInput,
+  View,
+} from "react-native";
 
-import { Collapsible } from '@/components/Collapsible';
-import { ExternalLink } from '@/components/ExternalLink';
-import ParallaxScrollView from '@/components/ParallaxScrollView';
-import { ThemedText } from '@/components/ThemedText';
-import { ThemedView } from '@/components/ThemedView';
-import { useEffect, useRef, useState } from 'react';
-import { NavigationProp, useNavigation } from '@react-navigation/native';
-import { RootStackParamList, Product } from '../types/navigation'; 
+// Define the Product type
+type Product = {
+  id: number;
+  image: string;
+  title: string;
+  price: number;
+  category: string;
+  description: string;
+};
 
+// Define the RootStackParamList type
+type RootStackParamList = {
+  productDetails: Product;
+};
 
 export default function TabTwoScreen() {
-  const[allProducts, setAllProducts] = useState<Product[]>([]);
-  const[currentPage, setCurrentPage] = useState<number>(1);
-  const itemsPerPage = 5;
-  useEffect(() => {
-    fetch('https://fakestoreapi.com/products?limit=10')
-    .then(result => result.json())
-    .then(data => {
-      const allProdsData: Product[] = data.map((prod:Product) => {
-        return({
-            image: prod.image,
-            title: prod.title,
-            price: prod.price,
-            category: prod.category,
-            description:prod.description
-          })
-      })
-      setAllProducts(allProdsData);
-    })
-  },[])
-  const startIndex = (currentPage - 1) * itemsPerPage;
-  const endIndex = (startIndex + itemsPerPage);
-  const paginatedProducts = allProducts.slice(startIndex, endIndex);
-  const handleNextPage = () => {
-    if(endIndex < allProducts.length){
-      setCurrentPage(currentPage + 1);
-      scrollToTop();
-    }
-    
-  }
-  const handlePrevPage = () => {
-    if(currentPage > 1){
-      setCurrentPage(currentPage - 1);
-      scrollToTop();
-    }
-    
-  }
-
-  const scrollViewRef = useRef<ScrollView>(null);
-  const scrollToTop = () => {
-    scrollViewRef.current?.scrollTo({y:0, animated:true});
-  }
+  const [allProducts, setAllProducts] = useState<Product[]>([]);
+  const [categories, setCategories] = useState<string[]>([]);
+  const [selectedCategory, setSelectedCategory] = useState<string>("all");
+  const [searchTerm, setSearchTerm] = useState<string>("");
+  const [visibleProductsCount, setVisibleProductsCount] = useState<number>(5); // Number of products to show initially
+  const [isLoading, setIsLoading] = useState<boolean>(false);
   const navigation = useNavigation<NavigationProp<RootStackParamList>>();
-  
+
+  // Fetch products based on category
+  const fetchProducts = async (category: string) => {
+    setIsLoading(true);
+    try {
+      const endpoint =
+        category === "all"
+          ? "https://fakestoreapi.com/products"
+          : `https://fakestoreapi.com/products/category/${category}`;
+      const response = await fetch(endpoint);
+      const data = await response.json();
+
+      const products: Product[] = data.map((prod: any) => ({
+        id: prod.id,
+        image: prod.image,
+        title: prod.title,
+        price: prod.price,
+        category: prod.category,
+        description: prod.description,
+      }));
+
+      setAllProducts(products);
+
+      // Set categories only for the first fetch
+      if (category === "all" && categories.length === 0) {
+        const uniqueCategories = Array.from(
+          new Set(products.map((prod) => prod.category))
+        );
+        setCategories(["all", ...uniqueCategories]);
+      }
+
+      setVisibleProductsCount(5); // Reset visible products count
+    } catch (error) {
+      console.error("Error fetching products:", error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchProducts("all");
+  }, []);
+
+  // Trigger refetch when category changes
+  useEffect(() => {
+    setAllProducts([]);
+    fetchProducts(selectedCategory);
+  }, [selectedCategory]);
+
+  // Filtered products based on search term
+  const filteredProducts = useMemo(() => {
+    if (searchTerm.trim()) {
+      return allProducts.filter((product) =>
+        product.title.toLowerCase().includes(searchTerm.toLowerCase())
+      );
+    }
+    return allProducts;
+  }, [allProducts, searchTerm]);
+
+  // Visible products for infinite scrolling
+  const visibleProducts = useMemo(() => {
+    return filteredProducts.slice(0, visibleProductsCount);
+  }, [filteredProducts, visibleProductsCount]);
+
+  const handleLoadMore = () => {
+    if (visibleProductsCount < filteredProducts.length) {
+      setVisibleProductsCount((prev) => prev + 5); // Load 5 more items
+    }
+  };
+
+  const handleProductPress = useCallback(
+    (product: Product) => {
+      navigation.navigate("productDetails", product);
+    },
+    [navigation]
+  );
+
+  const renderCategoryItem = ({ item }: { item: string }) => (
+    <Pressable
+      onPress={() => setSelectedCategory(item)}
+      className={`px-4 py-2 rounded-lg ${
+        selectedCategory === item
+          ? "bg-fuchsia-600 text-white"
+          : "bg-gray-200 text-gray-600"
+      }`}
+    >
+      <Text
+        className={`font-medium ${
+          selectedCategory === item ? "text-white" : "text-gray-600"
+        }`}
+      >
+        {item.charAt(0).toUpperCase() + item.slice(1)}
+      </Text>
+    </Pressable>
+  );
 
   return (
-    <ScrollView ref={scrollViewRef} showsVerticalScrollIndicator={false}>
-      <Text className="text-3xl font-light text-fuchsia-600  mt-5  text-center p-4" >
+    <View className="flex-1 bg-gray-100">
+      {/* Title */}
+      <Text className="text-2xl font-light text-fuchsia-600 my-1 text-center py-2">
         Browse through everything
       </Text>
-      <View>
 
+      {/* Search Bar */}
+      <View className="flex flex-row items-center mx-4 mb-4 space-x-2">
+        <TextInput
+          className="flex-1 bg-gray-100 p-3 rounded-lg border border-gray-300"
+          placeholder="Search products..."
+          value={searchTerm}
+          onChangeText={(text) => setSearchTerm(text)}
+        />
       </View>
-      {paginatedProducts.map( (product:Product, index:number) => {
-        return(
-                <View key={index} className="flex flex-col h-max mb-4 self-center w-3/4  rounded-xl space-y-4 p-2  mt-5 mx-2" style={{
-                    backgroundColor: 'white',
-                    borderRadius: 12,
-                    shadowColor: '#7F00FF',
-                    shadowOffset: { width: 0, height: 4 },
-                    shadowOpacity: 0.1,
-                    shadowRadius: 8,
-                    elevation: 5,
-                }} >
-                  <TouchableOpacity  onPress={() => navigation.navigate('productDetails', product)}>
-                    <Image
-                        source={{ uri: product.image }}
-                        className="w-40 h-40 self-center   rounded-xl"
-                        resizeMode="contain"
-                    />
-                    <View className="flex  rounded-xl py-0 self-center    flex-col space-y-1">
-                        <Text className="text-md w-40 h-max text-center font-bold text-black">{product.title}</Text>
-                        <Text className="w-40 h-max text-md  font-extrabold text-center text-gray-700">{`$${product.price}`}</Text>
-                    </View>
-                    </TouchableOpacity>
-                </View>
-          
-        )
-      })}
-      <View className="flex mb-4 flex-row justify-between p-5">
-        {currentPage > 1 && 
-        <Pressable className={`  border-2 border-gray-300 p-2 rounded-xl  outline `}  onPress={handlePrevPage}><Text className="text-md font-medium text-[#7F00FF]">Previous</Text></Pressable>
+
+      {/* Category Filter */}
+      <View style={{ height: 60, marginBottom: 5 }}>
+        <FlatList
+          data={categories}
+          horizontal
+          keyExtractor={(item) => item}
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={{
+            paddingHorizontal: 16,
+            alignItems: "center",
+            gap: 8,
+          }}
+          renderItem={renderCategoryItem}
+        />
+      </View>
+
+      {/* Product List */}
+      <FlatList
+        data={visibleProducts}
+        keyExtractor={(item) => `${item.id}`}
+        renderItem={({ item }) => (
+          <ProductItem product={item} onPress={handleProductPress} />
+        )}
+        onEndReached={handleLoadMore}
+        onEndReachedThreshold={0.5}
+        ListEmptyComponent={
+          isLoading ? (
+            <ActivityIndicator size="large" color="#7F00FF" />
+          ) : (
+            <Text className="text-center text-gray-500 mt-20">
+              No products found.
+            </Text>
+          )
         }
-        {endIndex < allProducts.length &&
-        <Pressable className=" border-2 border-gray-300 p-2 rounded-xl" onPress={handleNextPage}><Text className="text-md font-medium  text-[#7F00FF]">{`Next`} </Text></Pressable>
-        }
-        </View>
-    </ScrollView>
+        style={{ flex: 1, marginTop: 5 }}
+        contentContainerStyle={{ paddingBottom: 100 }}
+      />
+    </View>
   );
 }
-
